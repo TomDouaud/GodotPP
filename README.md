@@ -1,4 +1,4 @@
-# GodotPP: SNL-Powered GDExtension
+# GodotPP
 
 **GodotPP** is a high-performance networking GDExtension for Godot 4.x. It leverages the safety and speed of **Rust** via the **SNL (Simple Network Library)** and integrates it into a **C++** GDExtension using **Corrosion** and **CMake**.
 
