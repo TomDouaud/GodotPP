@@ -39,8 +39,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       # Setup CMake & Ninja
-      - name: Setup Ninja
-        uses: getsentry/action-setup-ninja@v1
+      - name: Setup CMake and Ninja
+        uses: lukka/get-cmake@latest
 
       # Configure CMake
       - name: Configure CMake
