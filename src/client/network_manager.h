@@ -1,8 +1,8 @@
 ﻿#ifndef GODOTPP_NETWORK_MANAGER_H
 #define GODOTPP_NETWORK_MANAGER_H
 
-#include <godot_cpp/classes/nodes>
 #include <snl.h>
+#include <godot_cpp/classes/node.hpp>
 
 struct SpawnPacket {
     uint32_t packet_type;

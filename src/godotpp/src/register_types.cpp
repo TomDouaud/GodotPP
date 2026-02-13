@@ -5,6 +5,8 @@
 #include <godot_cpp/core/defs.hpp>
 #include <godot_cpp/godot.hpp>
 
+#include "../../client/network_manager.h"
+
 using namespace godot;
 
 void initialize_module(ModuleInitializationLevel p_level) {
@@ -14,6 +16,7 @@ void initialize_module(ModuleInitializationLevel p_level) {
 
     // Register your custom Node2D
     ClassDB::register_class<GDExample>();
+    ClassDB::register_class<NetworkManager>();
 }
 
 void uninitialize_module(ModuleInitializationLevel p_level) {

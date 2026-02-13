@@ -9,6 +9,9 @@ namespace godot {
 
     private:
         double time_passed;
+        Vector2 initial_position;
+        double radius;
+        double speed;
 
     protected:
         static void _bind_methods();
@@ -17,6 +20,7 @@ namespace godot {
         GDExample();
         ~GDExample();
 
+        void _ready() override;
         void _process(double delta) override;
     };
 }
