@@ -2,6 +2,8 @@
 add_library(GodotPP SHARED
         src/gd_example.cpp
         src/register_types.cpp
+        ../client/network_manager.h
+        ../client/network_manager.cpp
 )
 target_link_libraries(GodotPP PRIVATE
         godot::cpp
