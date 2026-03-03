@@ -1,13 +1,16 @@
 [gd_scene format=3 uid="uid://dp0vhmk4t8jgu"]
 
-[ext_resource type="Texture2D" uid="uid://bv4f1f6tci7p3" path="res://icon.svg" id="1_uwrxv"]
+[ext_resource type="Texture2D" uid="uid://lk2yg2ih0esm" path="res://DebugMap.png" id="1_uwrxv"]
 
 [node name="Game" type="Node" unique_id=1441151470]
 
-[node name="GDExample" type="GDExample" parent="." unique_id=1285902514]
-position = Vector2(9.74938, 10.187973)
-texture = ExtResource("1_uwrxv")
-
 [node name="Camera2D" type="Camera2D" parent="." unique_id=852441175]
+position = Vector2(574, 324)
+
+[node name="FakeMapForDebug" type="Sprite2D" parent="Camera2D" unique_id=1828726616]
+texture_filter = 1
+position = Vector2(-2, 2.7500129)
+scale = Vector2(5.9322915, 3.3463545)
+texture = ExtResource("1_uwrxv")
 
 [node name="NetworkManager" type="NetworkManager" parent="." unique_id=622307914]
