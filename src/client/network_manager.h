@@ -12,6 +12,18 @@ struct SpawnPacket {
     float y;
 };
 
+struct MovePacket {
+    uint8_t packet_type; // de valeure 1
+    uint32_t network_id;
+    float x;
+    float y;
+};
+
+struct DestroyPacket {
+    uint8_t packet_type; // de valeure 2
+    uint32_t network_id;
+};
+
 namespace godot {
 class NetworkManager : public Node {
      GDCLASS(NetworkManager, Node)
@@ -29,6 +41,7 @@ public:
 
     void _ready() override;
     void _process(double delta) override;
+    void _exit_tree() override;
 };
 
 }

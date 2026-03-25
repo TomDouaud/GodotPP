@@ -22,6 +22,11 @@ struct MovePacket {
     float y;
 };
 
+struct DestroyPacket {
+    uint8_t packet_type; // de valeure 2
+    uint32_t network_id;
+};
+
 const uint8_t PACKET_SPAWN = 0; // type du packet de spawn, c'est dégueulasse faudrait faire une enum en vrai
 const uint32_t TYPE_PLAYER = 1; // type du player, c'est dégueulasse faudrait faire une enum en vrai
 
@@ -107,6 +112,20 @@ int main() {
                             net_socket_send(socket, pair.first.c_str(), buffer, sizeof(MovePacket));
                         }
                     }
+                }
+                else if (buffer[0] == 2 && bytes_read >= sizeof(DestroyPacket)) {
+                    DestroyPacket* dp = (DestroyPacket*)buffer;
+
+                    std::cout << "[Server] Client ID " << dp->network_id << " s'est deconnecte." << std::endl;
+
+                    // Prévenir a tout les autres joueurs la déconnexion
+                    for (const auto& pair : connected_clients) {
+                        if (pair.first != client_addr) {
+                            net_socket_send(socket, pair.first.c_str(), buffer, sizeof(DestroyPacket));
+                        }
+                    }
+                    // Supression du client dans la liste des clients connectés
+                    connected_clients.erase(client_addr);
                 }
             }
         }

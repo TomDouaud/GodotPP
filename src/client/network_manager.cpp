@@ -1,4 +1,7 @@
 ﻿#include "network_manager.h"
+
+#include <iostream>
+
 #include "gd_example.h"
 
 #include <godot_cpp/core/class_db.hpp>
@@ -11,13 +14,6 @@
 #include <godot_cpp/classes/input.hpp>
 
 #include "godot_cpp/variant/callable_custom.hpp"
-
-struct MovePacket {
-    uint8_t packet_type;
-    uint32_t network_id;
-    float x;
-    float y;
-};
 
 
 using namespace godot;
@@ -33,6 +29,7 @@ NetworkManager::NetworkManager() {
 NetworkManager::~NetworkManager() {
     if (socket) {
         net_socket_destroy(socket);
+        socket = nullptr;
     }
 }
 
@@ -115,6 +112,20 @@ void NetworkManager::_process(double delta) {
                     }
                 }
             }
+        } else if (p_type == 2 && bytes >= sizeof(DestroyPacket)) {
+            DestroyPacket* dp = (DestroyPacket*)buffer;
+
+            // Vérification que l'ID du client à supprimer n'est pas celui du client local
+            if (dp->network_id != my_network_id) {
+                // On cherche son Node et on le supprime
+                NodePath path(String("Entity_") + String::num_int64(dp->network_id));
+                Node* node_to_delete = get_node_or_null(path);
+
+                if (node_to_delete) {
+                    std::cout << "[Client] Suppression du joueur " << dp->network_id << std::endl;
+                    node_to_delete->queue_free();
+                }
+            }
         }
     }
 
@@ -146,4 +157,20 @@ void NetworkManager::_process(double delta) {
             }
         }
     }
+}
+
+void NetworkManager::_exit_tree() {
+    if (Engine::get_singleton()->is_editor_hint()) return;
+
+    if (my_network_id != 0) {
+        DestroyPacket dp;
+        dp.packet_type = 2; // Type destroy
+        dp.network_id = my_network_id;
+
+        // dernier envoi au serveur
+        net_socket_send(socket, "127.0.0.1:4242", (const uint8_t*)&dp, sizeof(DestroyPacket));
+        std::cout << "[Client] Deconnexion envoyee au serveur." << std::endl;
+    }
+
+    net_socket_destroy(socket);
 }
