@@ -98,8 +98,9 @@ void NetworkManager::_process(double delta) {
                 new_entity->set_texture(texture);
 
                 Label* label = memnew(Label);
+                label->set_name("PlayerLabel");
                 if (packet->network_id == my_network_id) {
-                    label->set_text("Client " + String::num_int64(packet->network_id) + " (Client Local)");
+                    label->set_text("Client " + String::num_int64(packet->network_id));
                     label->set_modulate(Color(0, 1, 0)); // Client local vert
                 } else {
                     label->set_text("Client " + String::num_int64(packet->network_id));
@@ -141,6 +142,14 @@ void NetworkManager::_process(double delta) {
                               std::chrono::system_clock::now().time_since_epoch()).count();
 
             uint64_t rtt = t2 - resp->t0;
+
+            NodePath path(String("Entity_") + String::num_int64(my_network_id) + "/PlayerLabel");
+            Label* lbl = Object::cast_to<Label>(get_node_or_null(path));
+
+            if (lbl) {
+                lbl->set_text("Client " + String::num_int64(my_network_id) + " (Moi) - Ping: " + String::num_int64(rtt) + " ms");
+            }
+
             UtilityFunctions::print("[Client] Ping #", resp->id, " | RTT = ", rtt, " ms");
         }
     }
