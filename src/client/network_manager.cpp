@@ -81,7 +81,7 @@ void NetworkManager::_process(double delta) {
         if (p_type == 0 && bytes >= sizeof(SpawnPacket)) {
             SpawnPacket* packet = (SpawnPacket*)buffer;
 
-            if (packet->packet_type == 0) { // le type de spawn
+            if (packet->packet_type == PACKET_SPAWN) {
                 if (my_network_id == 0) {
                     my_network_id = packet->network_id;
                     UtilityFunctions::print("[Client] Je suis le client ID: ", my_network_id );
@@ -111,7 +111,7 @@ void NetworkManager::_process(double delta) {
 
                 add_child(new_entity);
             }
-        } else if (p_type == 1 && bytes >= sizeof(MovePacket)) {
+        } else if (p_type == PACKET_MOVE && bytes >= sizeof(MovePacket)) {
             MovePacket* mp = (MovePacket*)buffer;
 
             Node* node = get_node_or_null(NodePath(String("Entity_") + String::num_int64(mp->network_id)));
@@ -121,7 +121,7 @@ void NetworkManager::_process(double delta) {
                     entity->set_position(Vector2(mp->x, mp->y));
                 }
             }
-        } else if (p_type == 2 && bytes >= sizeof(DestroyPacket)) {
+        } else if (p_type == PACKET_DESTROY && bytes >= sizeof(DestroyPacket)) {
             DestroyPacket* dp = (DestroyPacket*)buffer;
 
             // Vérification que l'ID du client à supprimer n'est pas celui du client local
@@ -135,7 +135,7 @@ void NetworkManager::_process(double delta) {
                     node_to_delete->queue_free();
                 }
             }
-        } else if (p_type == 5 && bytes >= sizeof(PingResponse)) {
+        } else if (p_type == PACKET_PONG && bytes >= sizeof(PingResponse)) {
             PingResponse* resp = (PingResponse*)buffer;
 
             uint64_t t2 = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -191,7 +191,7 @@ void NetworkManager::_process(double delta) {
 
         if (has_input) {
             InputPacket ip;
-            ip.packet_type = 3;
+            ip.packet_type = PACKET_INPUT;
             ip.network_id = my_network_id;
             ip.latest_sequence = current_sequence;
 
@@ -208,7 +208,7 @@ void NetworkManager::_process(double delta) {
             ping_timer = 0.0; // remise a zéro du timer
 
             PingRequest req;
-            req.packet_type = 4; // PING
+            req.packet_type = PACKET_PING;
             req.id = current_ping_id++;
             // On note l'heure de départ t0
             req.t0 = std::chrono::duration_cast<std::chrono::milliseconds>(

@@ -7,67 +7,8 @@
 #include <unordered_map>
 #include <random>
 
+#include "../../common/protocol.h"
 
-enum InputFlags : uint8_t {
-    INPUT_NONE   = 0,
-    INPUT_UP     = 1 << 0, // 1  (0000 0001)
-    INPUT_DOWN   = 1 << 1, // 2  (0000 0010)
-    INPUT_LEFT   = 1 << 2, // 4  (0000 0100)
-    INPUT_RIGHT  = 1 << 3, // 8  (0000 1000)
-    INPUT_ACTION = 1 << 4  // 16 (0001 0000)
-};
-
-#pragma pack(push, 1)
-
-struct SpawnPacket {
-    uint32_t packet_type; // de valeure 0
-    uint32_t network_id;
-    uint32_t class_id;
-    float x;
-    float y;
-};
-
-struct MovePacket {
-    uint8_t packet_type; // de valeure 1
-    uint32_t network_id;
-    float x;
-    float y;
-};
-
-struct DestroyPacket {
-    uint8_t packet_type; // de valeure 2
-    uint32_t network_id;
-};
-
-// l'état d'une seule frame
-struct InputState {
-    uint8_t keys;
-    float aim_x;
-    float aim_y;
-};
-
-struct InputPacket {
-    uint8_t packet_type;       // de valeure 3
-    uint32_t network_id;       // L'ID du joueur qui envoie les inputs
-    uint32_t latest_sequence;  // Le numéro de séquence augmantant a chaque frame
-    InputState history[20];    // 20 dernieres frames
-};
-
-struct PingRequest {
-    uint8_t packet_type; // de valeure 4
-    uint32_t id;         // Identifiant
-    uint64_t t0;         // Timestamp du client à l'envoi
-};
-
-struct PingResponse {
-    uint8_t packet_type; // de valeure 5
-    uint32_t id;
-    uint64_t t0;         // Recopié depuis le ping
-    uint64_t t1;         // Timestamp du serveur à l'envoi
-};
-#pragma pack(pop)
-
-const uint8_t PACKET_SPAWN = 0; // type du packet de spawn, c'est dégueulasse faudrait faire une enum en vrai
 const uint32_t TYPE_PLAYER = 1; // type du player, c'est dégueulasse faudrait faire une enum en vrai
 
 int main() {
@@ -148,7 +89,8 @@ int main() {
                 }
                 else {
                     // client déja connecté, gestion de son mouvement
-                    if (buffer[0] == 1 && bytes_read >= sizeof(MovePacket)) {
+                    if (buffer[0] == PACKET_MOVE && bytes_read >= sizeof(MovePacket)) {
+
                         MovePacket* mp = (MovePacket*)buffer;
 
                         // mise a jour du serveur
@@ -162,7 +104,7 @@ int main() {
                             }
                         }
                     }
-                    else if (buffer[0] == 2 && bytes_read >= sizeof(DestroyPacket)) {
+                    else if (buffer[0] == PACKET_DESTROY && bytes_read >= sizeof(DestroyPacket)) {
                         DestroyPacket* dp = (DestroyPacket*)buffer;
 
                         std::cout << "[Server] Client ID " << dp->network_id << " s'est deconnecte." << std::endl;
@@ -176,7 +118,7 @@ int main() {
                         // Supression du client dans la liste des clients connectés
                         connected_clients.erase(client_addr);
                     }
-                    else if (buffer[0] == 3 && bytes_read >= sizeof(InputPacket)) {
+                    else if (buffer[0] == PACKET_INPUT && bytes_read >= sizeof(InputPacket)) {
                         InputPacket* ip = (InputPacket*)buffer;
 
                         // récupération du joueur et utilisation du & pour éviter de faire une copie et de pouvoir mettre à jour directement les données du joueur
@@ -211,7 +153,7 @@ int main() {
 
                             // Broadcast
                             MovePacket mp;
-                            mp.packet_type = 1;
+                            mp.packet_type = PACKET_MOVE;
                             mp.network_id = player.id;
                             mp.x = player.x;
                             mp.y = player.y;
@@ -220,11 +162,11 @@ int main() {
                                 net_socket_send(socket, pair.first.c_str(), (const uint8_t*)&mp, sizeof(MovePacket));
                             }
                         }
-                    } else if (buffer[0] == 4 && bytes_read >= sizeof(PingRequest)) {
+                    } else if (buffer[0] == PACKET_PING && bytes_read >= sizeof(PingRequest)) {
                         PingRequest* req = (PingRequest*)buffer;
 
                         PingResponse resp;
-                        resp.packet_type = 5; // PONG
+                        resp.packet_type = PACKET_PONG;
                         resp.id = req->id;
                         resp.t0 = req->t0;
                         resp.t1 = std::chrono::duration_cast<std::chrono::milliseconds>(

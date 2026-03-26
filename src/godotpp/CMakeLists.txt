@@ -4,6 +4,7 @@ add_library(GodotPP SHARED
         src/register_types.cpp
         ../client/network_manager.h
         ../client/network_manager.cpp
+        ../common/protocol.h
 )
 target_link_libraries(GodotPP PRIVATE
         godot::cpp
