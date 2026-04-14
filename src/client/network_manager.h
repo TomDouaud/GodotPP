@@ -2,10 +2,19 @@
 #define GODOTPP_NETWORK_MANAGER_H
 
 #include <snl.h>
+#include <unordered_map>
+#include <vector>
 #include <godot_cpp/classes/node.hpp>
 #include "../../common/protocol.h"
 
 namespace godot {
+
+struct Snapshot {
+    uint64_t timestamp;
+    float x;
+    float y;
+};
+
 class NetworkManager : public Node {
      GDCLASS(NetworkManager, Node)
 
@@ -18,6 +27,9 @@ private:
 
     double ping_timer = 0.0;
     uint32_t current_ping_id = 0;
+
+    std::unordered_map<uint32_t, std::vector<Snapshot>> entity_snapshots;
+    double estimated_server_time = 0.0;
 
 protected:
     static void _bind_methods();

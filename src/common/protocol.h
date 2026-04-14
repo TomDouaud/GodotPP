@@ -30,6 +30,7 @@ struct MovePacket {
     uint32_t network_id;
     float x;
     float y;
+    uint64_t timestamp; // le timestamp pour l'interpolation
 };
 
 struct DestroyPacket {

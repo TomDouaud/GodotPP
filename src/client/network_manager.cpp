@@ -114,11 +114,27 @@ void NetworkManager::_process(double delta) {
         } else if (p_type == PACKET_MOVE && bytes >= sizeof(MovePacket)) {
             MovePacket* mp = (MovePacket*)buffer;
 
-            Node* node = get_node_or_null(NodePath(String("Entity_") + String::num_int64(mp->network_id)));
-            if (node) {
-                GDExample* entity = Object::cast_to<GDExample>(node);
-                if (entity) {
-                    entity->set_position(Vector2(mp->x, mp->y));
+            if (mp->timestamp > estimated_server_time) {
+                estimated_server_time = mp->timestamp;
+            }
+
+            if (mp->network_id != my_network_id) { // pour pas interpoler le joueur local
+                Snapshot snap = { mp->timestamp, mp->x, mp->y };
+                auto& snaps = entity_snapshots[mp->network_id];
+
+                snaps.push_back(snap);
+
+                if (snaps.size() > 3) { // Pour garder que 3 snapshots
+                    snaps.erase(snaps.begin());
+                }
+            }
+            else {
+                Node* node = get_node_or_null(NodePath(String("Entity_") + String::num_int64(mp->network_id)));
+                if (node) {
+                    GDExample* entity = Object::cast_to<GDExample>(node);
+                    if (entity) {
+                        entity->set_position(Vector2(mp->x, mp->y));
+                    }
                 }
             }
         } else if (p_type == PACKET_DESTROY && bytes >= sizeof(DestroyPacket)) {
@@ -217,6 +233,51 @@ void NetworkManager::_process(double delta) {
             std::cout << "[Client] Envoi du Ping #" << req.id << " au serveur..." << std::endl;
 
             net_socket_send(socket, "127.0.0.1:4242", (const uint8_t*)&req, sizeof(PingRequest));
+        }
+    }
+
+    if (estimated_server_time > 0) {
+        estimated_server_time += delta * 1000.0; // conversion en milisecondes
+
+        uint64_t render_time = (uint64_t)estimated_server_time - 20;
+
+        for (auto& pair : entity_snapshots) {
+            uint32_t id = pair.first;
+            auto& snaps = pair.second;
+
+            if (snaps.size() >= 2) {
+                Snapshot* past = nullptr;
+                Snapshot* future = nullptr;
+
+                for (size_t i = 0; i < snaps.size() - 1; ++i) {
+                    if (snaps[i].timestamp <= render_time && snaps[i+1].timestamp >= render_time) {
+                        past = &snaps[i];
+                        future = &snaps[i+1];
+                        break;
+                    }
+                }
+
+                if (past && future) {
+                    float time_diff = (float)(future->timestamp - past->timestamp);
+                    float t = (float)(render_time - past->timestamp) / time_diff;// Calcul de pourcentage pour le lerp
+
+                    // lerp
+                    float interp_x = past->x + (future->x - past->x) * t;
+                    float interp_y = past->y + (future->y - past->y) * t;
+
+                    Node* node = get_node_or_null(NodePath(String("Entity_") + String::num_int64(id)));
+                    if (node) {
+                        Object::cast_to<GDExample>(node)->set_position(Vector2(interp_x, interp_y));
+                    }
+                }
+                else if (snaps.back().timestamp < render_time) {
+                    // si grosses pertes de packets, téléportation de secours
+                    Node* node = get_node_or_null(NodePath(String("Entity_") + String::num_int64(id)));
+                    if (node) {
+                        Object::cast_to<GDExample>(node)->set_position(Vector2(snaps.back().x, snaps.back().y));
+                    }
+                }
+            }
         }
     }
 }

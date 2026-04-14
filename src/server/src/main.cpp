@@ -50,7 +50,6 @@ int main() {
             std::string client_addr(sender_addr);
 
             if (bytes_read > 0) {
-                std::string client_addr(sender_addr);
 
                 if (connected_clients.find(client_addr) == connected_clients.end()) {
 
@@ -127,21 +126,15 @@ int main() {
                         // Pour éviter de traiter les frames déja traitées
                         if (ip->latest_sequence > player.last_processed_sequence) {
 
-                            // Vérification du nombre de frames à traiter
                             uint32_t frames_to_process = ip->latest_sequence - player.last_processed_sequence;
-
-                            // Sécurité pour éviter de traiter trop de frames d'un coup si le client a eu un lag ou a envoyé un paquet d'input très vieux
                             if (frames_to_process > 20) frames_to_process = 20;
 
-                            // Application des mouvements de facon chronlogique
                             for (int i = frames_to_process - 1; i >= 0; --i) {
                                 uint8_t keys = ip->history[i].keys;
 
-                                // Simulation de la physique du serveur a 60fps
                                 float delta = 0.016f;
                                 float speed = 300.0f;
 
-                                // Opérateurs bit-à-bit (&) pour vérifier chaque touche
                                 if (keys & INPUT_UP)    player.y -= speed * delta;
                                 if (keys & INPUT_DOWN)  player.y += speed * delta;
                                 if (keys & INPUT_LEFT)  player.x -= speed * delta;
@@ -151,18 +144,10 @@ int main() {
                             // mise a jour du numéro de séquence traité pour ce joueur
                             player.last_processed_sequence = ip->latest_sequence;
 
-                            // Broadcast
-                            MovePacket mp;
-                            mp.packet_type = PACKET_MOVE;
-                            mp.network_id = player.id;
-                            mp.x = player.x;
-                            mp.y = player.y;
-
-                            for (const auto& pair : connected_clients) {
-                                net_socket_send(socket, pair.first.c_str(), (const uint8_t*)&mp, sizeof(MovePacket));
-                            }
+                            state_changed = true;
                         }
-                    } else if (buffer[0] == PACKET_PING && bytes_read >= sizeof(PingRequest)) {
+                    }
+                    else if (buffer[0] == PACKET_PING && bytes_read >= sizeof(PingRequest)) {
                         PingRequest* req = (PingRequest*)buffer;
 
                         PingResponse resp;
@@ -174,6 +159,23 @@ int main() {
 
                         net_socket_send(socket, sender_addr, (const uint8_t*)&resp, sizeof(PingResponse));
                     }
+                }
+            }
+        }
+        if (state_changed) {
+            uint64_t current_server_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                           std::chrono::system_clock::now().time_since_epoch()).count();
+
+            for (const auto& player_pair : connected_clients) {
+                MovePacket mp;
+                mp.packet_type = PACKET_MOVE;
+                mp.network_id = player_pair.second.id;
+                mp.x = player_pair.second.x;
+                mp.y = player_pair.second.y;
+                mp.timestamp = current_server_time;
+
+                for (const auto& target_pair : connected_clients) {
+                    net_socket_send(socket, target_pair.first.c_str(), (const uint8_t*)&mp, sizeof(MovePacket));
                 }
             }
         }
