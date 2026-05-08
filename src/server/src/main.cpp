@@ -11,6 +11,30 @@
 
 const uint32_t TYPE_PLAYER = 1; // type du player, c'est dégueulasse faudrait faire une enum en vrai
 
+struct CNetworkClient {
+    std::string address;
+    uint32_t last_processed_sequence = 0;
+};
+
+struct CNetworkId {
+    uint32_t id;
+};
+
+struct CPosition {
+    float x;
+    float y;
+};
+
+entt::entity find_client_by_address(entt::registry& registry, const std::string& address) {
+    auto view = registry.view<CNetworkClient>();
+    for (auto entity : view) {
+        if (view.get<CNetworkClient>(entity).address == address) {
+            return entity;
+        }
+    }
+    return entt::null; // Retourne null si le client n'existe pas
+}
+
 int main() {
     const char* server_address = "127.0.0.1:4242";
     std::cout << "[Server] Starting on port " << server_address << "..." << std::endl;
@@ -21,8 +45,6 @@ int main() {
         return 1;
     }
 
-    uint32_t next_network_id = 100;
-
     struct PlayerData {
         uint32_t id;
         float x;
@@ -30,7 +52,8 @@ int main() {
         uint32_t last_processed_sequence = 0;
     };
 
-    std::unordered_map<std::string, PlayerData> connected_clients;
+    entt::registry registry;
+    uint32_t next_network_id = 100;
 
     std::cout << "[Server] Listening..." << std::endl;
 
@@ -42,24 +65,24 @@ int main() {
 
         while (true) {
             int32_t bytes_read = net_socket_poll(socket, buffer, sizeof(buffer), sender_addr, sizeof(sender_addr));
+            if (bytes_read <= 0) break;
 
-            if (bytes_read <= 0) {
-                break;
-            }
+                std::string client_addr(sender_addr);
 
-            std::string client_addr(sender_addr);
+                entt::entity client_entity = find_client_by_address(registry, client_addr);
 
-            if (bytes_read > 0) {
-
-                if (connected_clients.find(client_addr) == connected_clients.end()) {
-
+                if (client_entity == entt::null) {
                     uint32_t new_id = next_network_id++;
                     float spawn_x = 300.0f + (static_cast<float>(rand()) / RAND_MAX) * 500.0f;
                     float spawn_y = 200.0f + (static_cast<float>(rand()) / RAND_MAX) * 200.0f;
 
-                    connected_clients[client_addr] = {new_id, spawn_x, spawn_y};
+                    client_entity = registry.create();
+                    // ajouts composants résaux
+                    registry.emplace<CNetworkClient>(client_entity, client_addr, 0u); // il faut que ca soit un unsigned int pour entt
+                    registry.emplace<CNetworkId>(client_entity, new_id);
+                    registry.emplace<CPosition>(client_entity, spawn_x, spawn_y);
 
-                    std::cout << "[Server] Spawning ID " << new_id << " at " << spawn_x << ", " << spawn_y << std::endl;
+                    std::cout << "[Server] Spawning ID " << new_id << " (ECS Entity: " << (uint32_t)client_entity << ")" << std::endl;
 
                     SpawnPacket new_player_packet;
                     new_player_packet.packet_type = PACKET_SPAWN;
@@ -68,86 +91,67 @@ int main() {
                     new_player_packet.x = spawn_x;
                     new_player_packet.y = spawn_y;
 
-                    // Brodcast qui manquait lors du commit précédent
-                    for (const auto& pair : connected_clients) {
-                        net_socket_send(socket, pair.first.c_str(), (const uint8_t*)&new_player_packet, sizeof(SpawnPacket));
-                    }
+                    // broadcast
+                    auto view = registry.view<CNetworkClient, CNetworkId, CPosition>();
+                    for (auto entity : view) {
+                        auto& net_client = view.get<CNetworkClient>(entity);
+                        auto& net_id = view.get<CNetworkId>(entity);
+                        auto& pos = view.get<CPosition>(entity);
 
-                    // Envoi a un nouveau joueur toutes les infos des joueurs déjà présents, parreil n'etait pas présent au commit précédent
-                    for (const auto& pair : connected_clients) {
-                        if (pair.second.id != new_id) {
+                        net_socket_send(socket, net_client.address.c_str(), (const uint8_t*)&new_player_packet, sizeof(SpawnPacket));
+
+                        // Catch-up
+                        if (entity != client_entity) {
                             SpawnPacket old_player_packet;
                             old_player_packet.packet_type = PACKET_SPAWN;
-                            old_player_packet.network_id = pair.second.id;
+                            old_player_packet.network_id = net_id.id;
                             old_player_packet.class_id = TYPE_PLAYER;
-                            old_player_packet.x = pair.second.x;
-                            old_player_packet.y = pair.second.y;
+                            old_player_packet.x = pos.x;
+                            old_player_packet.y = pos.y;
                             net_socket_send(socket, client_addr.c_str(), (const uint8_t*)&old_player_packet, sizeof(SpawnPacket));
                         }
                     }
-                }
-                else {
-                    // client déja connecté, gestion de son mouvement
-                    if (buffer[0] == PACKET_MOVE && bytes_read >= sizeof(MovePacket)) {
+                } else { // client déja connu
+                    if (buffer[0] == PACKET_INPUT && bytes_read >= sizeof(InputPacket)) {
+                        InputPacket* ip = (InputPacket*)buffer;
 
-                        MovePacket* mp = (MovePacket*)buffer;
+                        auto& net_client = registry.get<CNetworkClient>(client_entity);
+                        auto& pos = registry.get<CPosition>(client_entity);
 
-                        // mise a jour du serveur
-                        connected_clients[client_addr].x = mp->x;
-                        connected_clients[client_addr].y = mp->y;
+                        if (ip->latest_sequence > net_client.last_processed_sequence) {
+                            uint32_t frames_to_process = ip->latest_sequence - net_client.last_processed_sequence;
+                            if (frames_to_process > 20) frames_to_process = 20;
 
-                        // BRoadcast aux clients sauf celui qui a envoyé le mouvement
-                        for (const auto& pair : connected_clients) {
-                            if (pair.first != client_addr) {
-                                net_socket_send(socket, pair.first.c_str(), buffer, sizeof(MovePacket));
+                            for (int i = frames_to_process - 1; i >= 0; --i) {
+                                uint8_t keys = ip->history[i].keys;
+                                float delta = 0.016f;
+                                float speed = 300.0f;
+
+                                if (keys & INPUT_UP)    pos.y -= speed * delta;
+                                if (keys & INPUT_DOWN)  pos.y += speed * delta;
+                                if (keys & INPUT_LEFT)  pos.x -= speed * delta;
+                                if (keys & INPUT_RIGHT) pos.x += speed * delta;
                             }
+
+                            net_client.last_processed_sequence = ip->latest_sequence;
+                            state_changed = true;
                         }
                     }
                     else if (buffer[0] == PACKET_DESTROY && bytes_read >= sizeof(DestroyPacket)) {
                         DestroyPacket* dp = (DestroyPacket*)buffer;
 
-                        std::cout << "[Server] Client ID " << dp->network_id << " s'est deconnecte." << std::endl;
+                        std::cout << "[Server] Client ID " << dp->network_id << " (ECS Entity: " << (uint32_t)client_entity << ") s'est deconnecte." << std::endl;
 
-                        // Prévenir a tout les autres joueurs la déconnexion
-                        for (const auto& pair : connected_clients) {
-                            if (pair.first != client_addr) {
-                                net_socket_send(socket, pair.first.c_str(), buffer, sizeof(DestroyPacket));
+                        auto view = registry.view<CNetworkClient>();
+                        for (auto target_entity : view) {
+                            if (target_entity != client_entity) { // ca sert a rien de se renvoyer le message
+                                const std::string& target_addr = view.get<CNetworkClient>(target_entity).address;
+                                net_socket_send(socket, target_addr.c_str(), buffer, sizeof(DestroyPacket));
                             }
                         }
-                        // Supression du client dans la liste des clients connectés
-                        connected_clients.erase(client_addr);
-                    }
-                    else if (buffer[0] == PACKET_INPUT && bytes_read >= sizeof(InputPacket)) {
-                        InputPacket* ip = (InputPacket*)buffer;
 
-                        // récupération du joueur et utilisation du & pour éviter de faire une copie et de pouvoir mettre à jour directement les données du joueur
-                        auto& player = connected_clients[client_addr];
-
-                        // Pour éviter de traiter les frames déja traitées
-                        if (ip->latest_sequence > player.last_processed_sequence) {
-
-                            uint32_t frames_to_process = ip->latest_sequence - player.last_processed_sequence;
-                            if (frames_to_process > 20) frames_to_process = 20;
-
-                            for (int i = frames_to_process - 1; i >= 0; --i) {
-                                uint8_t keys = ip->history[i].keys;
-
-                                float delta = 0.016f;
-                                float speed = 300.0f;
-
-                                if (keys & INPUT_UP)    player.y -= speed * delta;
-                                if (keys & INPUT_DOWN)  player.y += speed * delta;
-                                if (keys & INPUT_LEFT)  player.x -= speed * delta;
-                                if (keys & INPUT_RIGHT) player.x += speed * delta;
-                            }
-
-                            // mise a jour du numéro de séquence traité pour ce joueur
-                            player.last_processed_sequence = ip->latest_sequence;
-
-                            state_changed = true;
-                        }
-                    }
-                    else if (buffer[0] == PACKET_PING && bytes_read >= sizeof(PingRequest)) {
+                        registry.destroy(client_entity);
+                    } else if (buffer[0] == PACKET_PING && bytes_read >= sizeof(PingRequest)) {
                         PingRequest* req = (PingRequest*)buffer;
 
                         PingResponse resp;
@@ -160,22 +164,24 @@ int main() {
                         net_socket_send(socket, sender_addr, (const uint8_t*)&resp, sizeof(PingResponse));
                     }
                 }
-            }
-        }
+        } // Fin de lecture
         if (state_changed) {
-            uint64_t current_server_time = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                           std::chrono::system_clock::now().time_since_epoch()).count();
+            uint64_t current_server_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 
-            for (const auto& player_pair : connected_clients) {
+            // boucle sur entitées qui ont une position et un ID
+            auto view = registry.view<CNetworkClient, CNetworkId, CPosition>();
+
+            for (auto entity_to_send : view) {
                 MovePacket mp;
                 mp.packet_type = PACKET_MOVE;
-                mp.network_id = player_pair.second.id;
-                mp.x = player_pair.second.x;
-                mp.y = player_pair.second.y;
+                mp.network_id = view.get<CNetworkId>(entity_to_send).id;
+                mp.x = view.get<CPosition>(entity_to_send).x;
+                mp.y = view.get<CPosition>(entity_to_send).y;
                 mp.timestamp = current_server_time;
 
-                for (const auto& target_pair : connected_clients) {
-                    net_socket_send(socket, target_pair.first.c_str(), (const uint8_t*)&mp, sizeof(MovePacket));
+                for (auto target_entity : view) {
+                    const std::string& target_addr = view.get<CNetworkClient>(target_entity).address;
+                    net_socket_send(socket, target_addr.c_str(), (const uint8_t*)&mp, sizeof(MovePacket));
                 }
             }
         }
