@@ -31,6 +31,7 @@ struct MovePacket {
     float x;
     float y;
     uint64_t timestamp; // le timestamp pour l'interpolation
+    uint32_t last_processed_sequence; // pour la correction
 };
 
 struct DestroyPacket {

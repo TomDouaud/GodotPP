@@ -179,6 +179,8 @@ int main() {
                 mp.y = view.get<CPosition>(entity_to_send).y;
                 mp.timestamp = current_server_time;
 
+                mp.last_processed_sequence = view.get<CNetworkClient>(entity_to_send).last_processed_sequence;
+
                 for (auto target_entity : view) {
                     const std::string& target_addr = view.get<CNetworkClient>(target_entity).address;
                     net_socket_send(socket, target_addr.c_str(), (const uint8_t*)&mp, sizeof(MovePacket));

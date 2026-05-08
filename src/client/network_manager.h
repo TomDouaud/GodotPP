@@ -15,6 +15,11 @@ struct Snapshot {
     float y;
 };
 
+struct PendingInput {
+    uint32_t sequence;
+    uint8_t keys;
+};
+
 class NetworkManager : public Node {
      GDCLASS(NetworkManager, Node)
 
@@ -30,6 +35,8 @@ private:
 
     std::unordered_map<uint32_t, std::vector<Snapshot>> entity_snapshots;
     double estimated_server_time = 0.0;
+
+    std::vector<PendingInput> pending_inputs; // Pour la prédiction, les inputs qui attendent le retour serveur
 
 protected:
     static void _bind_methods();

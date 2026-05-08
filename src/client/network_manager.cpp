@@ -132,9 +132,26 @@ void NetworkManager::_process(double delta) {
                 Node* node = get_node_or_null(NodePath(String("Entity_") + String::num_int64(mp->network_id)));
                 if (node) {
                     GDExample* entity = Object::cast_to<GDExample>(node);
-                    if (entity) {
-                        entity->set_position(Vector2(mp->x, mp->y));
+
+                    Vector2 corrected_pos = Vector2(mp->x, mp->y);
+
+                    pending_inputs.erase(
+                        std::remove_if(pending_inputs.begin(), pending_inputs.end(),
+                            [mp](const PendingInput& input) {
+                                return input.sequence <= mp->last_processed_sequence;
+                            }),
+                        pending_inputs.end());
+
+                    float speed = 300.0f;
+                    float delta_f = 0.016f;
+                    for (const auto& input : pending_inputs) {
+                        if (input.keys & INPUT_UP)    corrected_pos.y -= speed * delta_f;
+                        if (input.keys & INPUT_DOWN)  corrected_pos.y += speed * delta_f;
+                        if (input.keys & INPUT_LEFT)  corrected_pos.x -= speed * delta_f;
+                        if (input.keys & INPUT_RIGHT) corrected_pos.x += speed * delta_f;
                     }
+
+                    entity->set_position(corrected_pos);
                 }
             }
         } else if (p_type == PACKET_DESTROY && bytes >= sizeof(DestroyPacket)) {
@@ -198,6 +215,25 @@ void NetworkManager::_process(double delta) {
         input_history[0].aim_y = current_aim_y;
 
         current_sequence++;
+
+        if (current_keys != INPUT_NONE) {
+            pending_inputs.push_back({current_sequence, current_keys}); // ajout de l'action dans la liste des mouvement fait en prédiction
+
+            Node* my_node = get_node_or_null(NodePath(String("Entity_") + String::num_int64(my_network_id)));
+            if (my_node) {
+                GDExample* entity = Object::cast_to<GDExample>(my_node);
+                Vector2 pos = entity->get_position();
+                float speed = 300.0f;
+                float delta_f = 0.016f; // Simulation locale
+
+                if (current_keys & INPUT_UP)    pos.y -= speed * delta_f;
+                if (current_keys & INPUT_DOWN)  pos.y += speed * delta_f;
+                if (current_keys & INPUT_LEFT)  pos.x -= speed * delta_f;
+                if (current_keys & INPUT_RIGHT) pos.x += speed * delta_f;
+
+                entity->set_position(pos);
+            }
+        }
 
         // On envoie le paquet d'input si dans les 20 dernières frames il y a eu au moins une action (pour éviter d'envoyer des paquets d'input vides)
         bool has_input = false;
