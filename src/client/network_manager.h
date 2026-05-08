@@ -6,13 +6,14 @@
 #include <vector>
 #include <godot_cpp/classes/node.hpp>
 #include "../../common/protocol.h"
+#include "godot_cpp/variant/vector2.hpp"
 
 namespace godot {
 
-struct Snapshot {
-    uint64_t timestamp;
-    float x;
-    float y;
+struct RemotePhysics {
+    Vector2 current_position;
+    Vector2 target_position; // Point destination pour l'interpolation
+    Vector2 velocity;        // vitesse générée par le ressort
 };
 
 struct PendingInput {
@@ -33,7 +34,7 @@ private:
     double ping_timer = 0.0;
     uint32_t current_ping_id = 0;
 
-    std::unordered_map<uint32_t, std::vector<Snapshot>> entity_snapshots;
+    std::unordered_map<uint32_t, RemotePhysics> remote_entities;
     double estimated_server_time = 0.0;
 
     std::vector<PendingInput> pending_inputs; // Pour la prédiction, les inputs qui attendent le retour serveur
